@@ -39,7 +39,7 @@ Apply the SQL files in `supabase/migrations/` in timestamp order. Seed initial a
 
 For local development, copy `web/.env.example` to `web/.env.local`, set `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY`, then run `npm install` and `npm run dev` from `web/` using Node.js 22 or newer. Never put a Supabase service-role key in the browser app or public repository.
 
-In Supabase Auth, set the Site URL and allowed redirect URL to the Vercel app origin. Set the email template to use `{{ .Token }}` for numeric OTP codes. Google OAuth is not enabled in this version.
+The current Supabase Free email template sends a single-use sign-in link. To send numeric OTP codes, configure a custom SMTP provider (or a Supabase plan that allows template editing) in Auth → Emails, then set the Magic link or OTP template body to use `{{ .Token }}`. Enter SMTP credentials directly in Supabase; never commit them. The ProCount redirect is already allowlisted. Google OAuth is not enabled in this version.
 
 ## Firmware
 
