@@ -1,0 +1,13 @@
+services:
+  hivemq:
+    image: hivemq/hivemq4:latest
+    container_name: hivemq
+    pull_policy: always
+    ports:
+      - "8080:8080" # HiveMQ Control Center
+      - "1883:1883" # MQTT for ESP32
+      - "8000:8000" # MQTT over WebSocket for browser app
+    environment:
+      HIVEMQ_LICENSE_KEY: ${HIVEMQ_LICENSE_KEY:?Set HIVEMQ_LICENSE_KEY in .env}
+      HIVEMQ_LOG_BASED_CLUSTERING_ENABLED: "true"
+    restart: unless-stopped
