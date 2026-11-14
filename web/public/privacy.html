@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#10243a" />
+  <title>ProCount Privacy Policy</title>
+  <style>
+    :root{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#183044;background:#f3f7f8;line-height:1.65}*{box-sizing:border-box}body{margin:0}.wrap{max-width:850px;margin:48px auto;padding:36px;background:#fff;border:1px solid #dce7e9;border-radius:20px;box-shadow:0 18px 55px #09202a12}h1,h2{color:#102b3b;line-height:1.2}h1{font-size:36px;margin:.2em 0}h2{margin-top:30px;font-size:20px}.eyebrow{color:#078579;font-size:12px;font-weight:800;letter-spacing:.15em}.date,.note{color:#5c7280;font-size:14px}.note{padding:14px 16px;border-left:3px solid #00a896;background:#edf8f6;border-radius:6px}a{color:#087f73}li{margin:.55em 0}footer{border-top:1px solid #e1eaed;margin-top:34px;padding-top:18px;color:#607581;font-size:13px}@media(max-width:600px){.wrap{margin:12px;padding:22px;border-radius:12px}h1{font-size:30px}}
+  </style>
+</head>
+<body><main class="wrap">
+  <div class="eyebrow">PROCOUNT COMPANION</div>
+  <h1>Privacy Policy</h1>
+  <p class="date">Version 1.0 · 14 November 2026</p>
+  <p>This policy explains what ProCount stores when you sign in, create profiles, or scan a blood-test report.</p>
+  <p class="note">ProCount is an early prototype. It is not a medical device, does not diagnose a condition, and does not choose a supplement or dose from your report.</p>
+
+  <h2>Information we store</h2>
+  <ul>
+    <li>Your email address and access role, to send one-time sign-in codes and enforce the approved-user list.</li>
+    <li>Profile details you choose to save, such as name, age, weight, height, sex/reference context, goals, allergies, conditions, medications, and an approved portion target.</li>
+    <li>When you scan a PDF or DOCX, the original file, its file name, extracted text, and possible lab values/ranges shown in the app.</li>
+    <li>Your privacy-policy version and the time you accepted it.</li>
+  </ul>
+
+  <h2>How the data is used</h2>
+  <p>Profiles are used to show your own saved account details. Reports are processed in your browser for text extraction and possible value highlighting, then uploaded to your private account so you can review them later. Extraction can be wrong; compare all results with the source report. ProCount does not send reports to an AI service or use them for advertising.</p>
+  <p>If you connect the app to an MQTT broker, the device receives the selected profile slot and the target amount you choose, and the app displays device status. That traffic goes to the broker address you enter; report files and profile details are not sent to HiveMQ.</p>
+
+  <h2>Where data is stored and who can see it</h2>
+  <p>Vercel hosts the web app. Supabase provides sign-in, the account database, and private file storage. This ProCount Supabase project is hosted in region <code>ap-northeast-1</code> (Japan). Database row-level security and private storage rules restrict profile and report records to the signed-in account that owns them. ProCount admins can manage the approved email list, but the app does not give them access to another user's profiles or medical reports. Supabase processes and stores the data to provide the service.</p>
+  <p>Your browser also keeps a local cache of your profile, keyed to your account. Avoid using a shared or public device, and sign out when finished.</p>
+
+  <h2>Retention and deletion</h2>
+  <p>Saved profiles, uploaded reports, and extracted results remain until you delete them in the app or ask a ProCount admin to remove your account data. The report history has individual delete controls; the account-data panel can remove all saved profile and report data for the signed-in account. Removing your access from the allowlist prevents future use but does not by itself delete existing records.</p>
+
+  <h2>Your choice and consent</h2>
+  <p>You must accept this policy before requesting a sign-in code. You can decline and leave the app. You can sign out and withdraw consent by contacting the ProCount admin who approved your access; you may also use the in-app controls to delete saved account data. If this policy changes materially, ProCount will ask you to accept the updated version before continuing.</p>
+
+  <h2>Security and limitations</h2>
+  <p>ProCount uses account authentication and database/file access rules. No online service can guarantee absolute security. Do not upload a report unless you are comfortable storing it in this account. Do not use this prototype for emergencies or as a replacement for a clinician's advice.</p>
+
+  <h2>Privacy requests</h2>
+  <p>For a copy, correction, deletion, or question about your data, contact the ProCount admin who approved your account. The admin can disable access and help remove the records tied to your account.</p>
+  <footer><a href="/">Return to ProCount sign-in</a></footer>
+</main></body>
+</html>
