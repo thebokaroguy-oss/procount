@@ -6,6 +6,7 @@
 #include <SPI.h>
 #include <MFRC522.h>
 #include <TM1637Display.h>
+#include <Preferences.h>
 #include "config.h"
 #include "secrets.h"
 
@@ -15,6 +16,9 @@ WiFiClientSecure networkClient;
 WiFiClient networkClient;
 #endif
 PubSubClient mqtt(networkClient);
+Preferences settings;
+float activeStepsPerGram=0.0f;
+uint32_t lastCalibrationJogSteps=0;
 
 MFRC522 rfid(RFID_SS, RFID_RST);
 class Max7219Matrix {
@@ -40,7 +44,7 @@ String selectedUser="A", entered="", activeRequest="";
 String enrolledTags[4];
 uint8_t enrolledCount=0, animationFrame=0;
 uint32_t remainingSteps=0, lastStepAt=0, lastStatusAt=0, lastRFIDAt=0, lastAnimationAt=0;
-uint8_t stepPhase=0; bool dispensing=false;
+uint8_t stepPhase=0; bool dispensing=false, calibrationJogActive=false;
 const uint8_t phases[8]={0b0001,0b0011,0b0010,0b0110,0b0100,0b1100,0b1000,0b1001};
 
 void setLights(bool red,bool yellow,bool green){
@@ -77,30 +81,56 @@ void animateReady(){
 void publishStatus(const char* state,const char* message=""){
   Serial.printf("[STATUS] %s | %s | user=%s | grams=%ld\n",state,message,selectedUser.c_str(),(long)entered.toInt());
   if(!mqtt.connected()){Serial.println("[MQTT] Status not published: broker is disconnected.");return;}
-  JsonDocument d; d["deviceId"]=MQTT_DEVICE_ID;d["state"]=state;d["message"]=message;
+  JsonDocument d; d["deviceId"]=MQTT_DEVICE_ID;d["state"]=state;d["message"]=message;d["stepsPerGram"]=activeStepsPerGram;
   d["user"]=selectedUser;d["targetGrams"]=entered.toInt();d["estimatedGrams"]=dispensing?entered.toInt():0;
   if(activeRequest.length()) d["requestId"]=activeRequest;
   char out[300];size_t n=serializeJson(d,out,sizeof(out));mqtt.publish(topicStatus.c_str(),reinterpret_cast<const uint8_t*>(out),n,true);
 }
 void motorWrite(uint8_t p){for(int i=0;i<4;i++)digitalWrite(MOTOR_PINS[i],(p&(1<<i))?HIGH:LOW);}
 void reject(const String& id,const char* reason){Serial.printf("[DISPENSE] Rejected request %s: %s\n",id.c_str(),reason);activeRequest=id;showMood("error");setLights(true,false,false);publishStatus("error",reason);}
-void beginDispense(uint16_t grams,const String& who,const String& requestId){
+void beginDispense(uint16_t requestedGrams,const String& who,const String& requestId){
   selectedUser=who;activeRequest=requestId;
-  if(grams==0||grams>MAX_TARGET_GRAMS){reject(requestId,"Target outside allowed range");return;}
-  if(STEPS_PER_GRAM<=0){reject(requestId,"Calibration required: set STEPS_PER_GRAM after external-scale calibration");return;}
+  uint16_t grams=who=="A"?PROFILE_A_TARGET_GRAMS:who=="B"?PROFILE_B_TARGET_GRAMS:0;
+  if(grams==0){reject(requestId,"Only profile A (20 g) and profile B (27 g) have fixed targets");return;}
+  if(requestedGrams!=grams)Serial.printf("[DISPENSE] Profile %s target enforced: requested=%u g, fixed=%u g\n",who.c_str(),requestedGrams,grams);
+  entered=String(grams);
+  if(activeStepsPerGram<=0){reject(requestId,"Calibration required: run the external-scale calibration jog first");digits.showNumberDec(grams,false);return;}
   if(dispensing){reject(requestId,"Dispenser is busy");return;}
-  entered=String(grams);remainingSteps=(uint32_t)(grams*STEPS_PER_GRAM+0.5f);
+  remainingSteps=(uint32_t)(grams*activeStepsPerGram+0.5f);
+  calibrationJogActive=false;
   if(remainingSteps==0){reject(requestId,"Invalid calibration");return;}
-  Serial.printf("[DISPENSE] Starting request %s: target=%u g, estimated_steps=%lu, user=%s\n",requestId.c_str(),grams,(unsigned long)remainingSteps,who.c_str());
+  Serial.printf("[DISPENSE] Starting request %s: profile=%s fixed_target=%u g, estimated_steps=%lu\n",requestId.c_str(),who.c_str(),grams,(unsigned long)remainingSteps);
   dispensing=true;lastStepAt=millis();setLights(false,true,false);showMood("work");digits.showNumberDec(grams,false);publishStatus("dispensing","Step-count estimate; output is not weighed");
+}
+void beginCalibrationJog(uint32_t steps,const String& requestId){
+  activeRequest=requestId;
+  if(dispensing){reject(requestId,"Dispenser is busy");return;}
+  if(steps<8||steps>MAX_CALIBRATION_JOG_STEPS){reject(requestId,"Calibration jog must be 8 to 4096 half-steps");return;}
+  lastCalibrationJogSteps=steps;settings.putUInt("jogSteps",steps);
+  remainingSteps=steps;entered="0";calibrationJogActive=true;dispensing=true;lastStepAt=millis();
+  setLights(false,true,false);showMood("work");
+  Serial.printf("[CALIBRATION] Jog started: %lu half-steps. Catch and weigh the output on an external scale.\n",(unsigned long)steps);
+  publishStatus("calibration_jog","Calibration jog running; catch and weigh the output");
+}
+void saveCalibration(uint32_t steps,float measuredGrams,const String& requestId){
+  activeRequest=requestId;
+  if(dispensing){reject(requestId,"Dispenser is busy");return;}
+  if(steps<8||steps>MAX_CALIBRATION_JOG_STEPS||steps!=lastCalibrationJogSteps){reject(requestId,"Calibration steps must match the most recent jog");return;}
+  if(!isfinite(measuredGrams)||measuredGrams<=0||measuredGrams>1000){reject(requestId,"Enter the positive gram reading from the external scale");return;}
+  activeStepsPerGram=(float)steps/measuredGrams;settings.putFloat("stepsPerGram",activeStepsPerGram);
+  Serial.printf("[CALIBRATION] Saved from scale: steps=%lu, measured=%.3f g, calibration=%.3f steps/g\n",(unsigned long)steps,measuredGrams,activeStepsPerGram);
+  publishStatus("calibrated","External-scale calibration saved; profile targets are A 20 g and B 27 g");
 }
 void onMqtt(char* topic,byte* payload,unsigned int length){
   if(String(topic)!=topicCommand)return;
   Serial.printf("[MQTT] Command received on %s\n",topic);
   JsonDocument d;auto e=deserializeJson(d,payload,length);if(e){Serial.printf("[MQTT] Invalid JSON: %s\n",e.c_str());publishStatus("error","Invalid JSON command");return;}
-  String rid=d["requestId"]|"";String who=d["user"]|"A";uint16_t grams=d["grams"]|0;
+  String rid=d["requestId"]|"";String action=d["action"]|"dispense";String who=d["user"]|"A";uint16_t grams=d["grams"]|0;
   Serial.printf("[MQTT] Parsed request=%s user=%s target=%u g\n",rid.c_str(),who.c_str(),grams);
   if(rid.length()==0||rid==activeRequest){publishStatus("error","Missing or repeated requestId");return;}
+  if(action=="calibration_jog"){beginCalibrationJog(d["steps"]|0,rid);return;}
+  if(action=="set_calibration"){saveCalibration(d["steps"]|0,d["measuredGrams"]|0.0f,rid);return;}
+  if(action!="dispense"){reject(rid,"Unsupported command action");return;}
   beginDispense(grams,who,rid);
 }
 void mqttReconnect(){
@@ -134,7 +164,7 @@ void tickMotor(){
   if(!dispensing)return;
   uint32_t now=millis();if(now-lastStepAt<STEP_INTERVAL_MS)return;lastStepAt=now;
   motorWrite(phases[stepPhase]);stepPhase=(stepPhase+1)&7;remainingSteps--;
-  if(remainingSteps==0){motorWrite(0);dispensing=false;Serial.printf("[DISPENSE] Complete. Estimated target=%s g; mass was not measured.\n",entered.c_str());setLights(false,false,true);showMood("done");publishStatus("complete","Dispense finished; grams are estimated, not measured");}
+  if(remainingSteps==0){motorWrite(0);dispensing=false;setLights(false,false,true);showMood("done");if(calibrationJogActive){calibrationJogActive=false;Serial.printf("[CALIBRATION] Jog complete: %lu half-steps. Weigh the output and enter its mass in grams.\n",(unsigned long)lastCalibrationJogSteps);publishStatus("calibration_jog_complete","Jog complete; weigh the output and save its measured mass");return;}Serial.printf("[DISPENSE] Complete. Estimated target=%s g; mass was not measured.\n",entered.c_str());publishStatus("complete","Dispense finished; grams are estimated, not measured");}
 }
 void setup(){
   Serial.begin(115200);
@@ -142,7 +172,8 @@ void setup(){
   Serial.println("\n[ProCount] Booting firmware.");
   Serial.println("[TEST] RFID profile map loaded from local secrets. Idle matrix animates.");
   Serial.println("[TEST] Keypad scan disabled while D4/GPIO4 is used for RFID RST.");
-  Serial.printf("[ProCount] Device ID: %s | HiveMQ: %s:%u | calibration: %.3f steps/g\n",MQTT_DEVICE_ID,MQTT_HOST,MQTT_PORT,STEPS_PER_GRAM);
+  settings.begin("procount",false);activeStepsPerGram=settings.getFloat("stepsPerGram",STEPS_PER_GRAM);lastCalibrationJogSteps=settings.getUInt("jogSteps",0);
+  Serial.printf("[ProCount] Device ID: %s | HiveMQ: %s:%u | calibration: %.3f steps/g\n",MQTT_DEVICE_ID,MQTT_HOST,MQTT_PORT,activeStepsPerGram);
   for(auto p:MOTOR_PINS)pinMode(p,OUTPUT);
   motorWrite(0);
   for(int p:{LED_RED,LED_YELLOW,LED_GREEN})if(p>=0)pinMode(p,OUTPUT);
